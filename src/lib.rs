@@ -107,7 +107,7 @@
         EVENT_EMITTER.lock().unwrap().on("Hello", |_: ()| println!("Random stuff!"));
     }
     ```
-!*/
+*/
 
 //#[cfg(test)]
 mod tests;
