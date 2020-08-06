@@ -197,14 +197,12 @@ impl EventEmitter {
                     None => { 
                         callback_handlers.push(thread::spawn(move || { 
                             callback(cloned_bytes);
-                            ()
                         })); 
                     },
                     Some(limit) => {
                         if limit != 0 {
                             callback_handlers.push(thread::spawn(move || {
                                 callback(cloned_bytes);
-                                ()
                             }));
                             listener.limit = Some(limit - 1);
                         } else {
