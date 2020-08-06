@@ -19,7 +19,7 @@ event_emitter.emit("Say Hello", ());
 
 ## Basic Usage
 
-We can emit values of any type so long as they implement the serde Serialize and Deserialize traits.
+We can emit and listen to values of any type so long as they implement the serde Serialize and Deserialize traits.
 A single EventEmitter instance can have listeners to values of multiple types.
 
 ```rust
