@@ -124,10 +124,15 @@ use bincode;
 
 use uuid::Uuid;
 
+pub struct Listener {
+    callback: Arc<dyn Fn(Vec<u8>) + Sync + Send + 'static>,
+    limit: Option<u64>,
+    id: String,
+}
 
 #[derive(Default)]
 pub struct EventEmitter {
-    pub listeners: HashMap<String, Vec<(String, Arc<dyn Fn(Vec<u8>) + 'static + Sync + Send>)>>
+    pub listeners: HashMap<String, Vec<Listener>>
 }
 
 impl EventEmitter {
@@ -156,21 +161,45 @@ impl EventEmitter {
             for<'de> T: Deserialize<'de>,
             F: Fn(T) + 'static + Sync + Send 
     {
+        let id = self.on_limited(event, callback, None);
+        return id;
+    }
+
+    pub fn on_limited<F, T>(&mut self, event: &str, callback: F, limit: Option<u64>) -> String
+        where 
+            for<'de> T: Deserialize<'de>,
+            F: Fn(T) + 'static + Sync + Send 
+    {
         let id = Uuid::new_v4().to_string();
         let parsed_callback = move |bytes: Vec<u8>| {
             let value: T = bincode::deserialize(&bytes).unwrap();
             callback(value);
         };
 
+        let listener = Listener {
+            id: id.clone(),
+            limit,
+            callback: Arc::new(parsed_callback),
+        };
+
         match self.listeners.get_mut(event) {
-            Some(callbacks) => { callbacks.push((id.clone(), Arc::new(parsed_callback))); },
-            None => { self.listeners.insert(event.to_string(), vec![(id.clone(), Arc::new(parsed_callback))]); }
+            Some(callbacks) => { callbacks.push(listener); },
+            None => { self.listeners.insert(event.to_string(), vec![listener]); }
         }
 
         return id;
     }
 
-    /// Emits an event of the given parameters.
+    pub fn once<F, T>(&mut self, event: &str, callback: F) -> String
+        where 
+            for<'de> T: Deserialize<'de>,
+            F: Fn(T) + 'static + Sync + Send 
+    {
+        let id = self.on_limited(event, callback, Some(1));
+        return id;
+    }
+
+    /// Emits an event of the given parameters and executes each callback that is listening to that event asynchronously by spawning a new thread for each callback.
     ///
     /// # Example
     ///
@@ -182,14 +211,33 @@ impl EventEmitter {
     /// // The value can be of any type
     /// event_emitter.emit("Some event", "Hello programmer!");
     /// ```
-    pub fn emit<T>(&self, event: &str, value: T) 
+    pub fn emit<T>(&mut self, event: &str, value: T) 
         where T: Serialize
     {
-        if let Some(callbacks) = self.listeners.get(event) {
+        if let Some(listeners) = self.listeners.get_mut(event) {
             let bytes: Vec<u8> = bincode::serialize(&value).unwrap();
-            for callback in callbacks.iter().map(|(_, callback)| Arc::clone(callback)) {
+            
+            let mut listeners_to_remove: Vec<usize> = Vec::new();
+            for (index, listener) in listeners.iter_mut().enumerate() {
                 let cloned_bytes = bytes.clone();
-                thread::spawn(move || callback(cloned_bytes));
+                let callback = Arc::clone(&listener.callback);
+
+                match listener.limit {
+                    None => { thread::spawn(move || callback(cloned_bytes)); },
+                    Some(limit) => {
+                        if limit != 0 {
+                            thread::spawn(move || callback(cloned_bytes));
+                            listener.limit = Some(limit - 1);
+                        } else {
+                            listeners_to_remove.push(index);
+                        }
+                    }
+                }
+            }
+
+            // Reverse here so we don't mess up the ordering of the vector
+            for index in listeners_to_remove.into_iter().rev() {
+                listeners.remove(index);
             }
         }
     }
@@ -214,13 +262,6 @@ impl EventEmitter {
     pub fn sync_emit<T>(&self, event: &str, value: T) 
         where T: Serialize
     {
-        if let Some(callbacks) = self.listeners.get(event) {
-            let bytes: Vec<u8> = bincode::serialize(&value).unwrap();
-            for callback in callbacks.iter().map(|(_, callback)| Arc::clone(callback)) {
-                let cloned_bytes = bytes.clone();
-                callback(cloned_bytes);
-            }
-        }
     }
 
     /// Removes an event listener with the given id
@@ -237,7 +278,7 @@ impl EventEmitter {
     /// ```
     pub fn remove_listener(&mut self, id_to_delete: &str) -> Option<String> {
         for (_, event_listeners) in self.listeners.iter_mut() {
-            if let Some(index) = event_listeners.iter().position(|(id, _)| id == id_to_delete) {
+            if let Some(index) = event_listeners.iter().position(|listener| listener.id == id_to_delete) {
                 event_listeners.remove(index);
                 return Some(id_to_delete.to_string());
             } 
