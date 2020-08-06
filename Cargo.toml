@@ -5,7 +5,7 @@ authors = ["Dylan-Kerler <dylankerler@gmail.com>"]
 repository = "https://github.com/Dylan-Kerler/event_emitter_rs"
 edition = "2018"
 license = "MIT OR Apache-2.0"
-keywords = ["event emitter", "events", "EventEmitter", "event", "emitter", "events emitter"]
+keywords = ["event-emitter", "emitter", "EventEmitter", "event"]
 description = "Lightweight EventEmitter"
 readme = "./README.md"
 
