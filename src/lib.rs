@@ -1,4 +1,6 @@
 /*! 
+[![](http://meritbadge.herokuapp.com/event-emitter-rs)](https://crates.io/crates/event-emitter-rs)
+
 A simple EventEmitter implementation.
 
 Allows you to subscribe to events with callbacks and also fire those events.
