@@ -1,0 +1,10 @@
+[package]
+name = "event_emitter"
+version = "0.1.0"
+authors = ["Dylan-Kerler <dylankerler@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+uuid = { version = "0.8", features = ["v4"] }
+bincode = "*"
+serde = { version = "*", features = ["derive"] }
