@@ -2,12 +2,6 @@ use crate::EventEmitter;
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, Arc};
 
-#[derive(Debug)]
-pub struct Foo {
-    hello: u8,
-    i_am: u8
-}
-
 #[test]
 fn on() {
     let mut event_emitter = EventEmitter::new();
@@ -19,7 +13,7 @@ fn on() {
     });
 
     let callbacks = event_emitter.emit("Set", 10 as u32);
-    for callback in callbacks { // Wait for emitted callback to finish executing
+    for callback in callbacks { // Wait for emitted callbacks to finish executing
         callback.join();
     }
 
@@ -42,7 +36,7 @@ fn on() {
     });
 
     let callbacks = event_emitter.emit("Add Value To List", "hello".to_string());
-    for callback in callbacks { // Wait for emitted callback to finish executing
+    for callback in callbacks { // Wait for emitted callbacks to finish executing
         callback.join();
     }
 
@@ -76,6 +70,48 @@ fn remove_listener() {
         event_emitter.listeners.get("Hello rust!").unwrap().len(),
         "Should have removed listener"
     );
+}
+
+#[test]
+fn on_limited() {
+    let mut event_emitter = EventEmitter::new();
+    let mut counter: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
+
+    let cloned_counter = Arc::clone(&counter);
+    event_emitter.on_limited("Set", Some(2), move |value: u32| { 
+        *cloned_counter.lock().unwrap() = value; 
+    });
+    assert_eq!(
+        2,
+        event_emitter.listeners.get("Set").unwrap().first().unwrap().limit.unwrap(),
+        "Listener should have been added with a limit of 2 calls"
+    );
+
+    event_emitter.emit("Set", 10 as u32);
+    assert_eq!(
+        1,
+        event_emitter.listeners.get("Set").unwrap().first().unwrap().limit.unwrap(),
+        "Listener limit should have been reduced by 1"
+    );
+
+    event_emitter.emit("Set", 10 as u32);
+    assert_eq!(
+        0,
+        event_emitter.listeners.get("Set").unwrap().first().unwrap().limit.unwrap(),
+        "Listener should have 0 calls left"
+    );
+
+    event_emitter.emit("Set", 10 as u32);
+    assert_eq!(
+        0,
+        event_emitter.listeners.get("Set").unwrap().len(),
+        "Listener should have been removed"
+    );
+}
+
+#[test]
+fn once() {
+
 }
 
 mod event_emitter_file {

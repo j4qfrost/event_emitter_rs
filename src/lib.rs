@@ -18,7 +18,7 @@ event_emitter.emit("Say Hello", ());
 
 # Basic Usage
 
-We can emit values of any type so long as they implement the serde Serialize and Deserialize traits.
+We can emit and listen to values of any type so long as they implement the serde Serialize and Deserialize traits.
 A single EventEmitter instance can have listeners to values of multiple types.
 
 ```
@@ -153,7 +153,8 @@ impl EventEmitter {
     /// let mut event_emitter = EventEmitter::new();
     ///
     /// // This will print <"Hello world!"> whenever the <"Some event"> event is emitted
-    /// // type of the value parameter for the closure MUST be specified (here we just use a throwaway `()` type)
+    /// // The type of the `value` parameter for the closure MUST be specified and, if you plan to use the `value`, the `value` type 
+    /// // MUST also match the type that is being emitted (here we just use a throwaway `()` type since we don't care about using the `value`)
     /// event_emitter.on("Some event", |value: ()| println!("Hello world!"));
     /// ```
     pub fn on<F, T>(&mut self, event: &str, callback: F) -> String
@@ -161,41 +162,7 @@ impl EventEmitter {
             for<'de> T: Deserialize<'de>,
             F: Fn(T) + 'static + Sync + Send 
     {
-        let id = self.on_limited(event, callback, None);
-        return id;
-    }
-
-    pub fn on_limited<F, T>(&mut self, event: &str, callback: F, limit: Option<u64>) -> String
-        where 
-            for<'de> T: Deserialize<'de>,
-            F: Fn(T) + 'static + Sync + Send 
-    {
-        let id = Uuid::new_v4().to_string();
-        let parsed_callback = move |bytes: Vec<u8>| {
-            let value: T = bincode::deserialize(&bytes).unwrap();
-            callback(value);
-        };
-
-        let listener = Listener {
-            id: id.clone(),
-            limit,
-            callback: Arc::new(parsed_callback),
-        };
-
-        match self.listeners.get_mut(event) {
-            Some(callbacks) => { callbacks.push(listener); },
-            None => { self.listeners.insert(event.to_string(), vec![listener]); }
-        }
-
-        return id;
-    }
-
-    pub fn once<F, T>(&mut self, event: &str, callback: F) -> String
-        where 
-            for<'de> T: Deserialize<'de>,
-            F: Fn(T) + 'static + Sync + Send 
-    {
-        let id = self.on_limited(event, callback, Some(1));
+        let id = self.on_limited(event, None, callback);
         return id;
     }
 
@@ -208,7 +175,7 @@ impl EventEmitter {
     /// let mut event_emitter = EventEmitter::new();
     ///
     /// // Emits the <"Some event"> event and a value <"Hello programmer">
-    /// // The value can be of any type
+    /// // The value can be of any type as long as it implements the serde Serialize trait
     /// event_emitter.emit("Some event", "Hello programmer!");
     /// ```
     pub fn emit<T>(&mut self, event: &str, value: T) -> Vec<thread::JoinHandle<()>>
@@ -254,28 +221,6 @@ impl EventEmitter {
         return callback_handlers;
     }
 
-    /// Emits an event of the given parameters in a synchronous fashion.
-    /// Instead of executing each callback in a newly spawned thread, it will execute each callback in the order that they were inserted.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use event_emitter_rs::EventEmitter;
-    /// let mut event_emitter = EventEmitter::new();
-    ///
-    /// event_emitter.on("Some event", |value: ()| println!("1")); // Guaranteed to be executed first
-    /// event_emitter.on("Some event", |value: ()| println!("2")); // Will not execute this until the first callback has finished executing
-    /// event_emitter.on("Some event", |value: ()| println!("3")); // Will not execute this until the second callback has finished executing
-    ///
-    /// // Emits the <"Some event"> event and a value <"Hello programmer">
-    /// // The value can be of any type
-    /// event_emitter.sync_emit("Some event", "Hello programmer!");
-    /// ```
-    pub fn sync_emit<T>(&self, event: &str, value: T) 
-        where T: Serialize
-    {
-    }
-
     /// Removes an event listener with the given id
     ///
     /// # Example
@@ -297,5 +242,94 @@ impl EventEmitter {
         }
 
         return None;
+    }
+
+    /// Adds an event listener that will only execute the listener x amount of times - Then the listener will be deleted.
+    /// Returns the id of the newly added listener.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use event_emitter_rs::EventEmitter;
+    /// let mut event_emitter = EventEmitter::new();
+    ///
+    /// // Listener will be executed 3 times. After the third time, the listener will be deleted.
+    /// event_emitter.on_limited("Some event", Some(3), |value: ()| println!("Hello world!"));
+    /// event_emitter.emit("Some event", ()); // 1 >> "Hello world!"
+    /// event_emitter.emit("Some event", ()); // 2 >> "Hello world!"
+    /// event_emitter.emit("Some event", ()); // 3 >> "Hello world!"
+    /// event_emitter.emit("Some event", ()); // 4 >> <Nothing happens here because listener was deleted after the 3rd call>
+    /// ```
+    pub fn on_limited<F, T>(&mut self, event: &str, limit: Option<u64>, callback: F) -> String
+        where 
+            for<'de> T: Deserialize<'de>,
+            F: Fn(T) + 'static + Sync + Send 
+    {
+        let id = Uuid::new_v4().to_string();
+        let parsed_callback = move |bytes: Vec<u8>| {
+            let value: T = bincode::deserialize(&bytes).unwrap();
+            callback(value);
+        };
+
+        let listener = Listener {
+            id: id.clone(),
+            limit,
+            callback: Arc::new(parsed_callback),
+        };
+
+        match self.listeners.get_mut(event) {
+            Some(callbacks) => { callbacks.push(listener); },
+            None => { self.listeners.insert(event.to_string(), vec![listener]); }
+        }
+
+        return id;
+    }
+
+    /// Adds an event listener that will only execute the callback once - Then the listener will be deleted.
+    /// Returns the id of the newly added listener.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use event_emitter_rs::EventEmitter;
+    /// let mut event_emitter = EventEmitter::new();
+    ///
+    /// event_emitter.once("Some event", |value: ()| println!("Hello world!"));
+    /// event_emitter.emit("Some event", ()); // First event is emitted and the listener's callback is called once
+    /// // >> "Hello world!"
+    ///
+    /// event_emitter.emit("Some event", ());
+    /// // >> <Nothing happens here since listener was deleted>
+    /// ```
+    pub fn once<F, T>(&mut self, event: &str, callback: F) -> String
+        where 
+            for<'de> T: Deserialize<'de>,
+            F: Fn(T) + 'static + Sync + Send 
+    {
+        let id = self.on_limited(event, Some(1), callback);
+        return id;
+    }
+
+    /// NOT IMPLEMENTED!
+    /// Emits an event of the given parameters in a synchronous fashion.
+    /// Instead of executing each callback in a newly spawned thread, it will execute each callback in the order that they were inserted.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use event_emitter_rs::EventEmitter;
+    /// let mut event_emitter = EventEmitter::new();
+    ///
+    /// event_emitter.on("Some event", |value: ()| println!("1")); // Guaranteed to be executed first
+    /// event_emitter.on("Some event", |value: ()| println!("2")); // Will not execute this until the first callback has finished executing
+    /// event_emitter.on("Some event", |value: ()| println!("3")); // Will not execute this until the second callback has finished executing
+    ///
+    /// // Emits the <"Some event"> event and a value <"Hello programmer">
+    /// // The value can be of any type
+    /// event_emitter.sync_emit("Some event", "Hello programmer!");
+    /// ```
+    pub fn sync_emit<T>(&self, event: &str, value: T) 
+        where T: Serialize
+    {
     }
 }
