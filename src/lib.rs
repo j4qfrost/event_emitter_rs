@@ -211,9 +211,11 @@ impl EventEmitter {
     /// // The value can be of any type
     /// event_emitter.emit("Some event", "Hello programmer!");
     /// ```
-    pub fn emit<T>(&mut self, event: &str, value: T) 
+    pub fn emit<T>(&mut self, event: &str, value: T) -> Vec<thread::JoinHandle<()>>
         where T: Serialize
     {
+        let mut callback_handlers: Vec<thread::JoinHandle<()>> = Vec::new();
+
         if let Some(listeners) = self.listeners.get_mut(event) {
             let bytes: Vec<u8> = bincode::serialize(&value).unwrap();
             
@@ -223,10 +225,18 @@ impl EventEmitter {
                 let callback = Arc::clone(&listener.callback);
 
                 match listener.limit {
-                    None => { thread::spawn(move || callback(cloned_bytes)); },
+                    None => { 
+                        callback_handlers.push(thread::spawn(move || { 
+                            callback(cloned_bytes);
+                            ()
+                        })); 
+                    },
                     Some(limit) => {
                         if limit != 0 {
-                            thread::spawn(move || callback(cloned_bytes));
+                            callback_handlers.push(thread::spawn(move || {
+                                callback(cloned_bytes);
+                                ()
+                            }));
                             listener.limit = Some(limit - 1);
                         } else {
                             listeners_to_remove.push(index);
@@ -240,6 +250,8 @@ impl EventEmitter {
                 listeners.remove(index);
             }
         }
+
+        return callback_handlers;
     }
 
     /// Emits an event of the given parameters in a synchronous fashion.

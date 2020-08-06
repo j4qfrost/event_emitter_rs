@@ -1,6 +1,6 @@
 use crate::EventEmitter;
 use serde::{Deserialize, Serialize};
-
+use std::sync::{Mutex, Arc};
 
 #[derive(Debug)]
 pub struct Foo {
@@ -11,35 +11,46 @@ pub struct Foo {
 #[test]
 fn on() {
     let mut event_emitter = EventEmitter::new();
-    event_emitter.on("Hello rust!", |value: f64| println!("\nHello world! {:#?}", value));
+    let mut counter: Arc<Mutex<u32>> = Arc::new(Mutex::new(5));
 
-    assert_eq!(
-        1,
-        event_emitter.listeners.get("Hello rust!").unwrap().len(),
-        "Failed to add event emitter to listeners vector"
-    );
-    event_emitter.emit("Hello rust!", 12.0);
+    let cloned_counter = Arc::clone(&counter);
+    event_emitter.on("Set", move |value: u32| { 
+        *cloned_counter.lock().unwrap() = value; 
+    });
 
-    event_emitter.on("Hello!", |value: f64| println!("\nHello worl1d! {:#?}", value));
-    let foo = &105.0;
-    event_emitter.emit("Hello!", foo);
-
-    event_emitter.on("A", |number: f64| println!("\nnumber add {}", number + 3.0));
-    let value = &5.0;
-    event_emitter.emit("A", value); 
-     // >> "8.0"
-
-    // Using a more advanced type such as a struct
-    #[derive(Serialize, Deserialize)]
-    struct Date {
-        month: String,
-        day: String,   
+    let callbacks = event_emitter.emit("Set", 10 as u32);
+    for callback in callbacks { // Wait for emitted callback to finish executing
+        callback.join();
     }
 
-    let a = Date { month: "January".to_string(), day: "Tuesday".to_string() };
-    event_emitter.on("LOG_DATE", |date: Date| println!("\n\n{} {}", date.day, date.month));
-    event_emitter.emit("LOG_DATE", Date { month: "January".to_string(), day: "Tuesday".to_string() }); 
-    event_emitter.emit("LOG_DATE", Date { month: "April".to_string(), day: "Wednesday".to_string() }); 
+    assert_eq!(
+        10 as u32,
+        *counter.lock().unwrap(),
+        "Counter should have been set to the emitted value"
+    );
+
+    struct Container {
+        list: Vec<String>
+    }
+
+    let mut container: Arc<Mutex<Container>> = Arc::new(Mutex::new(Container { list: Vec::new() }));
+
+    let cloned_container = Arc::clone(&container);
+    event_emitter.on("Add Value To List", move |value: String| { 
+        let mut container = cloned_container.lock().unwrap(); 
+        (*container).list.push(value);
+    });
+
+    let callbacks = event_emitter.emit("Add Value To List", "hello".to_string());
+    for callback in callbacks { // Wait for emitted callback to finish executing
+        callback.join();
+    }
+
+    assert_eq!(
+        vec!["hello".to_string()],
+        (*container.lock().unwrap()).list,
+        "'hello' should have been pushed to the list after the 'Add Value To List' event was called with 'hello'"
+    );
 }
 
 #[test]
