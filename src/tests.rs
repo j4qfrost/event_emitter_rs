@@ -1,6 +1,7 @@
 use crate::EventEmitter;
 use serde::{Deserialize, Serialize};
 
+
 #[derive(Debug)]
 pub struct Foo {
     hello: u8,
@@ -38,6 +39,7 @@ fn on() {
     let a = Date { month: "January".to_string(), day: "Tuesday".to_string() };
     event_emitter.on("LOG_DATE", |date: Date| println!("\n\n{} {}", date.day, date.month));
     event_emitter.emit("LOG_DATE", Date { month: "January".to_string(), day: "Tuesday".to_string() }); 
+    event_emitter.emit("LOG_DATE", Date { month: "April".to_string(), day: "Wednesday".to_string() }); 
 }
 
 #[test]
@@ -63,4 +65,21 @@ fn remove_listener() {
         event_emitter.listeners.get("Hello rust!").unwrap().len(),
         "Should have removed listener"
     );
+}
+
+mod event_emitter_file {
+    use std::sync::Mutex;
+    use crate::EventEmitter;
+    
+    lazy_static! {
+        pub static ref EVENT_EMITTER: Mutex<EventEmitter> = Mutex::new(EventEmitter::new());
+    }
+}
+
+#[test]
+fn global_emitter() {
+    use event_emitter_file::EVENT_EMITTER;
+
+    EVENT_EMITTER.lock().unwrap().on("Hello", |_: ()| println!("hello there!"));
+    EVENT_EMITTER.lock().unwrap().emit("Hello", ());
 }
