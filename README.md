@@ -1,4 +1,4 @@
-# event_emitter
+# ferris_emitter
 
 A simple EventEmitter implementation.
 
