@@ -1,6 +1,6 @@
 [package]
 name = "event-emitter-rs"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Dylan-Kerler <dylankerler@gmail.com>"]
 repository = "https://github.com/Dylan-Kerler/event_emitter_rs"
 edition = "2018"
