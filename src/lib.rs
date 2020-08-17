@@ -111,16 +111,20 @@ fn random_function() {
 ```
 */
 
-//#[cfg(test)]
+#![feature(async_closure)]
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;
+#[cfg(not(feature = "tokio_thread"))]
 use std::thread;
+#[cfg(feature = "tokio_thread")]
+use tokio::task as thread;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
-#[macro_use]
-extern crate lazy_static;
+// #[macro_use]
+// extern crate lazy_static;
 
 use bincode;
 
@@ -192,18 +196,30 @@ impl EventEmitter {
             for (index, listener) in listeners.iter_mut().enumerate() {
                 let cloned_bytes = bytes.clone();
                 let callback = Arc::clone(&listener.callback);
+                        
+                #[cfg(not(feature = "tokio_thread"))]
+                let handler = move || { 
+                    callback(cloned_bytes);
+                };
+                #[cfg(feature = "tokio_thread")]
+                let handler = async move || {
+                    callback(cloned_bytes);
+                };
 
                 match listener.limit {
-                    None => { 
-                        callback_handlers.push(thread::spawn(move || { 
-                            callback(cloned_bytes);
-                        })); 
+                    None => {
+                        #[cfg(not(feature = "tokio_thread"))]
+                        callback_handlers.push(thread::spawn(handler)); 
+                        #[cfg(feature = "tokio_thread")]
+                        callback_handlers.push(thread::spawn(handler())); 
                     },
                     Some(limit) => {
                         if limit != 0 {
-                            callback_handlers.push(thread::spawn(move || {
-                                callback(cloned_bytes);
-                            }));
+                            #[cfg(not(feature = "tokio_thread"))]
+                            callback_handlers.push(thread::spawn(handler)); 
+                            #[cfg(feature = "tokio_thread")]
+                            callback_handlers.push(thread::spawn(handler())); 
+
                             listener.limit = Some(limit - 1);
                         } else {
                             listeners_to_remove.push(index);
@@ -328,8 +344,9 @@ impl EventEmitter {
     /// // The value can be of any type
     /// event_emitter.sync_emit("Some event", "Hello programmer!");
     /// ```
-    pub fn sync_emit<T>(&self, event: &str, value: T) 
+    pub fn sync_emit<T>(&self, _event: &str, _value: T) 
         where T: Serialize
     {
+        unimplemented!()
     }
 }

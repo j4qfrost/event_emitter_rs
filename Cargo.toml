@@ -9,8 +9,12 @@ keywords = ["event-emitter", "emitter", "EventEmitter", "event"]
 description = "Lightweight EventEmitter"
 readme = "./README.md"
 
+[features]
+tokio_thread = ["tokio"]
+
 [dependencies]
 uuid = { version = "0.8", features = ["v4"] }
 bincode = "1.3.1"
 serde = { version = "1.0.114", features = ["derive"] }
 lazy_static = "1.4.0"
+tokio = { version = "0.2", features = ["full"], optional = true }
